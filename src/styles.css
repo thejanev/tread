@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 @theme {
-  --color-studio: #ebeaee;
-  --color-ink: #17171a;
-  --color-muted: #6f6d75;
+  --color-studio: #2c2e32;
+  --color-ink: #f4f1ea;
+  --color-muted: #b7b3aa;
   --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
 }

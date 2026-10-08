@@ -8,10 +8,10 @@ export type TireStats = {
 };
 
 const RADIUS = 1.06;
-const WIDTH = 0.78;
-const PITCH = 0.52;
+const WIDTH = 0.8;
+const PITCH = 0.18;
 const CIRC = Math.PI * 2 * RADIUS;
-const STUDIO = 0xebeaee;
+const ASPHALT = 0x2c2e32;
 const MAX_SAMPLES = 760;
 
 type Sample = { x: number; z: number; s: number };
@@ -44,9 +44,9 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
   renderer.toneMappingExposure = 1.05;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(STUDIO);
-  scene.fog = new THREE.Fog(STUDIO, 18, 46);
-  scene.environmentIntensity = 0.55;
+  scene.background = new THREE.Color(ASPHALT);
+  scene.fog = new THREE.Fog(ASPHALT, 14, 40);
+  scene.environmentIntensity = 0.42;
 
   const pmrem = new THREE.PMREMGenerator(renderer);
   const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -55,8 +55,8 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
 
   const camera = new THREE.PerspectiveCamera(34, width() / height(), 0.4, 200);
 
-  scene.add(new THREE.HemisphereLight(0xfffaf6, 0xd5d3db, 0.55));
-  const sun = new THREE.DirectionalLight(0xfff7ee, 2.1);
+  scene.add(new THREE.HemisphereLight(0xc9d4e0, 0x2a2c30, 0.7));
+  const sun = new THREE.DirectionalLight(0xfff3e4, 1.7);
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.left = -8;
@@ -68,7 +68,7 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.03;
   scene.add(sun, sun.target);
-  const fill = new THREE.DirectionalLight(0xd7e0ff, 0.45);
+  const fill = new THREE.DirectionalLight(0xb7c6d6, 0.38);
   fill.position.set(-6, 3.5, -7);
   scene.add(fill);
 
@@ -90,12 +90,25 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
     return tex;
   };
 
-  const floorTex = keepTex(new THREE.CanvasTexture(paintFloor()));
+  const road = paintAsphalt();
+  const floorTex = keepTex(new THREE.CanvasTexture(road.color));
   floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
-  floorTex.repeat.set(24, 24);
+  floorTex.repeat.set(56, 56);
+  const floorBump = keepTex(new THREE.CanvasTexture(road.bump), false);
+  floorBump.wrapS = floorBump.wrapT = THREE.RepeatWrapping;
+  floorBump.repeat.copy(floorTex.repeat);
   const floor = new THREE.Mesh(
     keepGeo(new THREE.PlaneGeometry(400, 400)),
-    keepMat(new THREE.MeshStandardMaterial({ color: 0xffffff, map: floorTex, roughness: 0.96, metalness: 0 })),
+    keepMat(
+      new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: floorTex,
+        bumpMap: floorBump,
+        bumpScale: 0.035,
+        roughness: 0.94,
+        metalness: 0.02,
+      }),
+    ),
   );
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
@@ -103,6 +116,7 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
 
   const tireMap = keepTex(new THREE.CanvasTexture(paintTire(false)));
   tireMap.wrapS = THREE.RepeatWrapping;
+  tireMap.repeat.set(CIRC / PITCH, 1);
   let dead = false;
   void document.fonts.ready.then(() => {
     if (dead) return;
@@ -111,14 +125,15 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
   });
   const tireBump = keepTex(new THREE.CanvasTexture(paintTire(true)), false);
   tireBump.wrapS = THREE.RepeatWrapping;
+  tireBump.repeat.copy(tireMap.repeat);
 
   const rubber = keepMat(
     new THREE.MeshStandardMaterial({
       map: tireMap,
       bumpMap: tireBump,
-      bumpScale: 0.045,
-      roughness: 0.62,
-      metalness: 0.08,
+      bumpScale: 0.11,
+      roughness: 0.86,
+      metalness: 0.03,
     }),
   );
 
@@ -133,64 +148,44 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
   carcass.receiveShadow = true;
   spinner.add(carcass);
 
-  const alloy = keepMat(new THREE.MeshStandardMaterial({ color: 0xd5d8de, roughness: 0.22, metalness: 0.92 }));
-  const alloyDark = keepMat(new THREE.MeshStandardMaterial({ color: 0x6e737c, roughness: 0.3, metalness: 0.85 }));
-  const ink = keepMat(new THREE.MeshStandardMaterial({ color: 0x141416, roughness: 0.4, metalness: 0.35 }));
-  const pinline = keepMat(new THREE.MeshStandardMaterial({ color: 0xe4551f, roughness: 0.4, metalness: 0.2 }));
+  const alloy = keepMat(new THREE.MeshStandardMaterial({ color: 0xc5c8ce, roughness: 0.28, metalness: 0.9 }));
+  const alloyDark = keepMat(new THREE.MeshStandardMaterial({ color: 0x4a4e55, roughness: 0.4, metalness: 0.75 }));
+  const ink = keepMat(new THREE.MeshStandardMaterial({ color: 0x121214, roughness: 0.5, metalness: 0.25 }));
 
-  const rimR = RADIUS * 0.56;
-  const spokeGeo = keepGeo(new THREE.BoxGeometry(0.075, rimR * 0.78, 0.05));
-  spokeGeo.translate(0, rimR * 0.46, 0.02);
-  const lipGeo = keepGeo(new THREE.TorusGeometry(rimR, 0.028, 10, 48));
-  const hubGeo = keepGeo(new THREE.CylinderGeometry(0.13, 0.15, 0.07, 24));
-  const discGeo = keepGeo(new THREE.CylinderGeometry(RADIUS * 0.48, RADIUS * 0.48, 0.025, 32));
-  const lugGeo = keepGeo(new THREE.CylinderGeometry(0.028, 0.028, 0.03, 8));
-  const pinGeo = keepGeo(new THREE.TorusGeometry(0.1, 0.008, 8, 24));
+  const rimR = RADIUS * 0.685;
+  const wheelTex = keepTex(new THREE.CanvasTexture(paintWheel()));
+  const wheelMat = keepMat(
+    new THREE.MeshStandardMaterial({ map: wheelTex, roughness: 0.32, metalness: 0.78 }),
+  );
+  const wheelGeo = keepGeo(new THREE.CircleGeometry(rimR, 72));
+  const lipGeo = keepGeo(new THREE.TorusGeometry(rimR, 0.02, 12, 72));
+  const discGeo = keepGeo(new THREE.CylinderGeometry(RADIUS * 0.52, RADIUS * 0.52, 0.02, 40));
 
   for (const side of [-1, 1] as const) {
     const face = new THREE.Group();
-    face.position.x = side * (WIDTH / 2 - 0.02);
+    face.position.x = side * (WIDTH / 2 - 0.012);
     face.rotation.y = side === 1 ? Math.PI / 2 : -Math.PI / 2;
     spinner.add(face);
 
     const disc = new THREE.Mesh(discGeo, alloyDark);
     disc.rotation.x = Math.PI / 2;
-    disc.position.z = -0.06;
+    disc.position.z = -0.045;
     face.add(disc);
 
     const lip = new THREE.Mesh(lipGeo, alloy);
     lip.castShadow = true;
     face.add(lip);
 
-    for (let i = 0; i < 5; i++) {
-      const spoke = new THREE.Mesh(spokeGeo, alloy);
-      spoke.rotation.z = (i / 5) * Math.PI * 2 + 0.18;
-      spoke.castShadow = true;
-      face.add(spoke);
-    }
-
-    const hub = new THREE.Mesh(hubGeo, ink);
-    hub.rotation.x = Math.PI / 2;
-    hub.position.z = 0.03;
-    face.add(hub);
-
-    const pin = new THREE.Mesh(pinGeo, pinline);
-    pin.position.z = 0.066;
-    face.add(pin);
-
-    for (let i = 0; i < 5; i++) {
-      const lug = new THREE.Mesh(lugGeo, alloy);
-      const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
-      lug.rotation.x = Math.PI / 2;
-      lug.position.set(Math.cos(a) * 0.082, Math.sin(a) * 0.082, 0.055);
-      face.add(lug);
-    }
+    const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+    wheel.position.z = 0.012;
+    wheel.castShadow = true;
+    face.add(wheel);
   }
 
-  const valveGeo = keepGeo(new THREE.CylinderGeometry(0.015, 0.015, 0.07, 8));
+  const valveGeo = keepGeo(new THREE.CylinderGeometry(0.012, 0.014, 0.055, 8));
   valveGeo.rotateZ(Math.PI / 2);
   const valve = new THREE.Mesh(valveGeo, ink);
-  valve.position.set(WIDTH / 2 - 0.02, RADIUS * 0.78, 0);
+  valve.position.set(WIDTH / 2 + 0.01, RADIUS * 0.8, 0);
   spinner.add(valve);
 
   const shadowTex = keepTex(new THREE.CanvasTexture(paintBlob()));
@@ -226,11 +221,13 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
     keepMat(
       new THREE.MeshStandardMaterial({
         map: trackTex,
-        roughness: 0.88,
-        metalness: 0,
+        roughness: 0.7,
+        metalness: 0.02,
         transparent: true,
-        alphaTest: 0.35,
-        depthWrite: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
       }),
     ),
   );
@@ -372,7 +369,7 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
   host.addEventListener("pointerup", onUp, { passive: true });
   host.addEventListener("pointercancel", onCancel, { passive: true });
 
-  const half = 0.3;
+  const half = 0.32;
   const right = new THREE.Vector2();
   const tangent = new THREE.Vector2();
 
@@ -433,7 +430,7 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
 
   function aspectFit() {
     const aspect = width() / height();
-    return aspect >= 1.2 ? 1 : 1 + (1.2 - Math.max(aspect, 0.45)) * 0.9;
+    return aspect >= 1.2 ? 1 : 1 + (1.2 - Math.max(aspect, 0.42)) * 1.25;
   }
   function introScale() {
     const k = Math.min(camBlend / 2.2, 1);
@@ -579,114 +576,274 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
 }
 
 function tireLathe() {
-  const bead = RADIUS * 0.64;
-  const steps = 32;
+  const rim = RADIUS * 0.7;
+  const steps = 40;
   const pts: THREE.Vector2[] = [];
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     const y = (t - 0.5) * WIDTH;
-    const edge = Math.abs(t - 0.5) * 2;
-    const crown = Math.cos(Math.min(edge, 1) * Math.PI * 0.5);
-    const rounded = bead + (RADIUS - bead) * Math.pow(crown, 0.72);
-    const flat = edge < 0.16 ? 1 : edge > 0.34 ? 0 : 1 - (edge - 0.16) / 0.18;
-    pts.push(new THREE.Vector2(THREE.MathUtils.lerp(rounded, RADIUS, flat), y));
+    const u = Math.abs(t - 0.5) * 2;
+    let r: number;
+    if (u < 0.62) {
+      r = RADIUS - u * u * 0.018;
+    } else {
+      const k = (u - 0.62) / 0.38;
+      const drop = k * k * (3 - 2 * k);
+      const shoulder = RADIUS - 0.62 * 0.62 * 0.018;
+      r = shoulder + (rim - shoulder) * drop;
+    }
+    pts.push(new THREE.Vector2(r, y));
   }
-  return new THREE.LatheGeometry(pts, 72);
+  return new THREE.LatheGeometry(pts, 80);
 }
 
-function paintFloor() {
-  const size = 512;
+function paintAsphalt() {
+  const size = 1024;
+  const color = document.createElement("canvas");
+  const bump = document.createElement("canvas");
+  color.width = bump.width = size;
+  color.height = bump.height = size;
+  const ctx = color.getContext("2d")!;
+  const btx = bump.getContext("2d")!;
+  ctx.fillStyle = "#3a3c40";
+  ctx.fillRect(0, 0, size, size);
+  btx.fillStyle = "#808080";
+  btx.fillRect(0, 0, size, size);
+
+  for (let i = 0; i < 28; i++) {
+    const shade = 48 + Math.random() * 28;
+    ctx.fillStyle = `rgba(${shade},${shade},${shade + 2},${0.12 + Math.random() * 0.16})`;
+    ctx.beginPath();
+    ctx.ellipse(
+      Math.random() * size,
+      Math.random() * size,
+      40 + Math.random() * 140,
+      24 + Math.random() * 80,
+      Math.random() * Math.PI,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+
+  for (let i = 0; i < 18000; i++) {
+    const n = 28 + Math.random() * 150;
+    const s = Math.random() < 0.06 ? 2 + Math.random() * 2.4 : 1;
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    ctx.fillStyle = `rgba(${n},${n},${n + 3},${0.25 + Math.random() * 0.55})`;
+    ctx.fillRect(x, y, s, s);
+    const bumpShade = n > 120 ? 168 : n < 60 ? 70 : 128;
+    btx.fillStyle = `rgb(${bumpShade},${bumpShade},${bumpShade})`;
+    btx.fillRect(x, y, s, s);
+  }
+
+  ctx.strokeStyle = "rgba(18,18,20,0.45)";
+  ctx.lineWidth = 1.2;
+  btx.strokeStyle = "#404040";
+  btx.lineWidth = 2;
+  for (let i = 0; i < 7; i++) {
+    let x = Math.random() * size;
+    let y = Math.random() * size;
+    ctx.beginPath();
+    btx.beginPath();
+    ctx.moveTo(x, y);
+    btx.moveTo(x, y);
+    for (let k = 0; k < 6; k++) {
+      x += (Math.random() - 0.5) * 180;
+      y += (Math.random() - 0.4) * 90;
+      ctx.lineTo(x, y);
+      btx.lineTo(x, y);
+    }
+    ctx.stroke();
+    btx.stroke();
+  }
+
+  ctx.fillStyle = "rgba(16,16,18,0.55)";
+  ctx.fillRect(0, size * 0.47, size, 4);
+  btx.fillStyle = "#303030";
+  btx.fillRect(0, size * 0.47, size, 5);
+  return { color, bump };
+}
+
+function paintTire(bump: boolean) {
+  const w = 256;
+  const h = 1024;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = bump ? "#808080" : "#1a1a1e";
+  ctx.fillRect(0, 0, w, h);
+
+  if (!bump) {
+    ctx.strokeStyle = "rgba(255,255,255,0.04)";
+    ctx.lineWidth = 2;
+    for (const y of [0.06, 0.1, 0.14, 0.86, 0.9, 0.94]) {
+      ctx.beginPath();
+      ctx.moveTo(0, y * h);
+      ctx.lineTo(w, y * h);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#3c3c42";
+    ctx.font = "600 34px 'Instrument Sans', sans-serif";
+    ctx.textBaseline = "middle";
+    const line = "TREAD   245/40ZR18   TUBELESS   M+S   ";
+    const lineW = Math.max(ctx.measureText(line).width, 1);
+    for (const y of [0.11 * h, 0.89 * h]) {
+      for (let x = 0; x < w + lineW; x += lineW) ctx.fillText(line, x, y);
+    }
+  }
+
+  drawTread(ctx, 0, 0.2 * h, w, 0.6 * h, bump ? "bump" : "color");
+  return canvas;
+}
+
+function drawTread(
+  ctx: CanvasRenderingContext2D,
+  x0: number,
+  y0: number,
+  w: number,
+  h: number,
+  mode: "color" | "bump",
+) {
+  const groove = mode === "bump" ? "#2a2a2a" : "#070709";
+  const block = mode === "bump" ? "#ececec" : "#34343a";
+  const sipe = mode === "bump" ? "#6a6a6a" : "#101014";
+  ctx.fillStyle = groove;
+  ctx.fillRect(x0, y0, w, h);
+
+  const bands = [
+    { y: 0.0, h: 0.1, shift: 0.15, gap: 0.18 },
+    { y: 0.16, h: 0.2, shift: 0.0, gap: 0.26 },
+    { y: 0.42, h: 0.16, shift: 0.48, gap: 0.22 },
+    { y: 0.64, h: 0.18, shift: 0.08, gap: 0.28 },
+    { y: 0.88, h: 0.12, shift: 0.4, gap: 0.16 },
+  ];
+  ctx.fillStyle = block;
+  for (const band of bands) {
+    const by = y0 + band.y * h;
+    const bh = band.h * h;
+    const gap = band.gap * w;
+    const bw = w - gap;
+    const x = x0 + ((band.shift % 1) * w);
+    roundRect(ctx, x, by + bh * 0.08, bw, bh * 0.84, 5);
+    ctx.fill();
+    if (x + bw > x0 + w) {
+      roundRect(ctx, x - w, by + bh * 0.08, bw, bh * 0.84, 5);
+      ctx.fill();
+    }
+    ctx.fillStyle = sipe;
+    const cuts = 3;
+    for (let i = 0; i < cuts; i++) {
+      const sx = x + ((i + 1) / (cuts + 1)) * bw;
+      ctx.fillRect(sx, by + bh * 0.12, Math.max(1.5, w * 0.025), bh * 0.76);
+      if (sx > x0 + w) ctx.fillRect(sx - w, by + bh * 0.12, Math.max(1.5, w * 0.025), bh * 0.76);
+    }
+    ctx.fillStyle = block;
+  }
+}
+
+function paintTrack() {
+  const w = 512;
+  const h = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d")!;
+  drawTread(ctx, 0, 0, w, h, "color");
+  const img = ctx.getImageData(0, 0, w, h);
+  for (let y = 0; y < h; y++) {
+    const v = y / (h - 1);
+    const edge = Math.min(1, v / 0.07, (1 - v) / 0.07);
+    const feather = edge * edge * (3 - 2 * edge);
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const darkness = img.data[i]!;
+      const groove = darkness < 48;
+      img.data[i] = groove ? 28 : 16;
+      img.data[i + 1] = groove ? 28 : 16;
+      img.data[i + 2] = groove ? 30 : 18;
+      img.data[i + 3] = Math.round((groove ? 36 : 210) * feather);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
+}
+
+function paintWheel() {
+  const size = 1024;
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#e7e6ea";
-  ctx.fillRect(0, 0, size, size);
-  for (let i = 0; i < 1600; i++) {
-    const shade = 80 + Math.random() * 50;
-    ctx.fillStyle = `rgba(${shade},${shade - 1},${shade + 6},${0.035 + Math.random() * 0.05})`;
-    ctx.fillRect(Math.random() * size, Math.random() * size, 1 + Math.random() * 1.6, 1);
-  }
-  return canvas;
-}
+  const c = size / 2;
+  ctx.clearRect(0, 0, size, size);
 
-function paintTire(bump: boolean) {
-  const w = 1024;
-  const h = 512;
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = bump ? "#808080" : "#2a2a30";
-  ctx.fillRect(0, 0, w, h);
+  const metal = ctx.createRadialGradient(c * 0.82, c * 0.78, 30, c, c, c);
+  metal.addColorStop(0, "#f2f4f6");
+  metal.addColorStop(0.35, "#c5c9d0");
+  metal.addColorStop(0.72, "#8e939c");
+  metal.addColorStop(1, "#6a6f78");
 
-  if (!bump) {
-    ctx.fillStyle = "#ece7df";
-    ctx.font = "600 30px 'Instrument Sans', sans-serif";
-    ctx.textBaseline = "middle";
-    const line = "TREAD    245/40 ZR 18    TUBELESS    ";
-    const lineW = ctx.measureText(line).width;
-    for (const y of [0.2 * h, 0.8 * h]) {
-      for (let x = 0; x < w + lineW; x += lineW) ctx.fillText(line, x, y);
-    }
-    ctx.fillStyle = "#e4551f";
-    ctx.fillRect(0, 0.3 * h, w, 5);
-    ctx.fillRect(0, 0.69 * h, w, 5);
-    ctx.fillStyle = "rgba(236,231,223,0.45)";
-    ctx.fillRect(0, 0.312 * h, w, 2);
-    ctx.fillRect(0, 0.702 * h, w, 2);
-  }
+  ctx.fillStyle = "#1a1c20";
+  ctx.beginPath();
+  ctx.arc(c, c, c - 2, 0, Math.PI * 2);
+  ctx.fill();
 
-  const treadTop = 0.36 * h;
-  const treadH = 0.28 * h;
-  ctx.fillStyle = bump ? "#3a3a3a" : "#141418";
-  ctx.fillRect(0, treadTop, w, treadH);
-
-  const rows = 3;
-  const cycles = Math.round(CIRC / PITCH);
-  const rowH = treadH / rows;
-  ctx.fillStyle = bump ? "#f0f0f0" : "#3c3c44";
-  for (let row = 0; row < rows; row++) {
-    const shift = row === 1 ? 0.5 : 0;
-    for (let c = 0; c < cycles; c++) {
-      const x = ((c + shift) / cycles) * w;
-      const bw = (0.62 / cycles) * w;
-      roundRect(ctx, x, treadTop + row * rowH + rowH * 0.16, bw, rowH * 0.68, 7);
-      ctx.fill();
-    }
-  }
-  return canvas;
-}
-
-function paintTrack() {
-  const w = 256;
-  const h = 128;
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d")!;
-  ctx.clearRect(0, 0, w, h);
-  const rows = 3;
-  const rowH = h / rows;
-  for (let row = 0; row < rows; row++) {
-    const shift = row === 1 ? 0.5 : 0;
-    const x = shift * w;
-    const bw = 0.62 * w;
-    const y = row * rowH + rowH * 0.14;
-    const bh = rowH * 0.72;
-    const grad = ctx.createLinearGradient(0, y, 0, y + bh);
-    grad.addColorStop(0, "#2a2a30");
-    grad.addColorStop(0.45, "#121216");
-    grad.addColorStop(1, "#1c1c22");
-    ctx.fillStyle = grad;
-    roundRect(ctx, x, y, bw, bh, 8);
+  ctx.save();
+  ctx.translate(c, c);
+  ctx.fillStyle = metal;
+  for (let i = 0; i < 5; i++) {
+    ctx.rotate((Math.PI * 2) / 5);
+    ctx.beginPath();
+    ctx.moveTo(-26, 36);
+    ctx.lineTo(34, 58);
+    ctx.lineTo(18, c * 0.92);
+    ctx.lineTo(-46, c * 0.78);
+    ctx.closePath();
     ctx.fill();
-    if (x + bw > w) {
-      roundRect(ctx, x - w, y, bw, bh, 8);
-      ctx.fill();
-    }
-    ctx.fillStyle = "rgba(255,255,255,0.14)";
-    ctx.fillRect(x + 8, y + 4, Math.max(0, bw - 16), 2);
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    ctx.beginPath();
+    ctx.moveTo(-18, 70);
+    ctx.lineTo(-4, 80);
+    ctx.lineTo(-10, c * 0.84);
+    ctx.lineTo(-36, c * 0.74);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = metal;
+  }
+  ctx.restore();
+
+  ctx.strokeStyle = "#9aa0a8";
+  ctx.lineWidth = 10;
+  ctx.beginPath();
+  ctx.arc(c, c, c * 0.9, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.fillStyle = "#121316";
+  ctx.beginPath();
+  ctx.arc(c, c, c * 0.2, 0, Math.PI * 2);
+  ctx.fill();
+  const cap = ctx.createRadialGradient(c - 18, c - 22, 4, c, c, c * 0.2);
+  cap.addColorStop(0, "#d5d8de");
+  cap.addColorStop(1, "#5c6168");
+  ctx.fillStyle = cap;
+  ctx.beginPath();
+  ctx.arc(c, c, c * 0.15, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#d7dbe0";
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+    ctx.beginPath();
+    ctx.arc(c + Math.cos(a) * c * 0.3, c + Math.sin(a) * c * 0.3, 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#2a2c30";
+    ctx.beginPath();
+    ctx.arc(c + Math.cos(a) * c * 0.3, c + Math.sin(a) * c * 0.3, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#d7dbe0";
   }
   return canvas;
 }
@@ -716,9 +873,9 @@ function paintBlob() {
   canvas.height = size;
   const ctx = canvas.getContext("2d")!;
   const g = ctx.createRadialGradient(size / 2, size / 2, 8, size / 2, size / 2, size / 2);
-  g.addColorStop(0, "rgba(18,18,20,0.38)");
-  g.addColorStop(0.5, "rgba(18,18,20,0.12)");
-  g.addColorStop(1, "rgba(18,18,20,0)");
+  g.addColorStop(0, "rgba(0,0,0,0.55)");
+  g.addColorStop(0.45, "rgba(0,0,0,0.22)");
+  g.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);
   return canvas;
