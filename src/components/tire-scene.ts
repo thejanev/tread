@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
 export type TireStats = {
   meters: number;
@@ -10,23 +9,21 @@ export type TireStats = {
 
 const RADIUS = 1.06;
 const WIDTH = 0.8;
-const PITCH = 0.168;
-const CIRC = Math.PI * 2 * RADIUS;
-const TREAD_DEPTH = 0.04;
-const GROOVE_R = RADIUS - TREAD_DEPTH;
-const TREAD_HALF = 0.355;
+const PITCH = 0.186;
+const TREAD_DEPTH = 0.036;
+const TREAD_HALF = 0.345;
 const ASPHALT = 0x3a3836;
 const ROAD_REPEAT = 32;
 const PLANE = 400;
 const MAX_SAMPLES = 760;
 
-type Rib = { x: number; w: number; gap: number; shift: number };
+type Rib = { x0: number; x1: number; gap: number; shift: number; sipes: number };
 const RIBS: Rib[] = [
-  { x: -0.292, w: 0.112, gap: 0.16, shift: 0.08 },
-  { x: -0.148, w: 0.092, gap: 0.3, shift: 0 },
-  { x: 0, w: 0.1, gap: 0.26, shift: 0.46 },
-  { x: 0.148, w: 0.092, gap: 0.32, shift: 0.2 },
-  { x: 0.292, w: 0.112, gap: 0.14, shift: 0.58 },
+  { x0: -0.342, x1: -0.252, gap: 0.1, shift: 0.04, sipes: 1 },
+  { x0: -0.214, x1: -0.08, gap: 0.27, shift: 0.46, sipes: 3 },
+  { x0: -0.05, x1: 0.05, gap: 0.23, shift: 0.14, sipes: 2 },
+  { x0: 0.08, x1: 0.214, gap: 0.29, shift: 0.62, sipes: 3 },
+  { x0: 0.252, x1: 0.342, gap: 0.09, shift: 0.3, sipes: 1 },
 ];
 
 type Sample = { x: number; z: number; s: number };
@@ -80,8 +77,8 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
   sun.shadow.camera.bottom = -8;
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 36;
-  sun.shadow.bias = -0.0004;
-  sun.shadow.normalBias = 0.03;
+  sun.shadow.bias = -0.00025;
+  sun.shadow.normalBias = 0.008;
   scene.add(sun, sun.target);
   const fill = new THREE.DirectionalLight(0xb9c8d4, 0.32);
   fill.position.set(-6, 3.5, -7);
@@ -135,13 +132,14 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
   floor.receiveShadow = true;
   scene.add(floor);
 
-  const side = paintSidewall(false);
+  const side = paintSidewall();
   const sideMap = keepTex(new THREE.CanvasTexture(side.color));
   const sideBump = keepTex(new THREE.CanvasTexture(side.bump), false);
+  const sideRough = keepTex(new THREE.CanvasTexture(side.rough), false);
   let dead = false;
   void document.fonts.ready.then(() => {
     if (dead) return;
-    const next = paintSidewall(false);
+    const next = paintSidewall();
     sideMap.image = next.color;
     sideMap.needsUpdate = true;
     sideBump.image = next.bump;
@@ -152,24 +150,13 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
     new THREE.MeshPhysicalMaterial({
       map: sideMap,
       bumpMap: sideBump,
-      bumpScale: 0.014,
-      color: 0xffffff,
-      roughness: 0.84,
-      metalness: 0.02,
-      clearcoat: 0.08,
-      clearcoatRoughness: 0.62,
-    }),
-  );
-  const sipeMap = keepTex(new THREE.CanvasTexture(paintBlockFace()));
-  sipeMap.wrapS = sipeMap.wrapT = THREE.RepeatWrapping;
-  const blockMat = keepMat(
-    new THREE.MeshPhysicalMaterial({
-      map: sipeMap,
-      color: 0xffffff,
-      roughness: 0.74,
-      metalness: 0.04,
-      clearcoat: 0.16,
-      clearcoatRoughness: 0.42,
+      bumpScale: 0.02,
+      roughnessMap: sideRough,
+      roughness: 1,
+      metalness: 0,
+      clearcoat: 0.04,
+      clearcoatRoughness: 0.72,
+      envMapIntensity: 0.42,
     }),
   );
 
@@ -178,122 +165,87 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
   root.add(spinner);
   scene.add(root);
 
-  const carcass = new THREE.Mesh(keepGeo(tireLathe()), carcassMat);
-  carcass.rotation.z = Math.PI / 2;
+  const carcass = new THREE.Mesh(keepGeo(buildTireGeometry()), carcassMat);
   carcass.castShadow = true;
   carcass.receiveShadow = true;
   spinner.add(carcass);
 
-  const blockCount = RIBS.reduce((sum, rib) => sum + Math.floor(CIRC / PITCH) * (rib.w > 0 ? 1 : 1), 0);
-  const blocks = new THREE.InstancedMesh(keepGeo(new RoundedBoxGeometry(1, 1, 1, 2, 0.16)), blockMat, blockCount);
-  blocks.castShadow = true;
-  blocks.receiveShadow = true;
-  const dummy = new THREE.Object3D();
-  const radial = new THREE.Vector3();
-  const circum = new THREE.Vector3();
-  const axial = new THREE.Vector3(1, 0, 0);
-  let blockIndex = 0;
-  const perRib = Math.floor(CIRC / PITCH);
-  for (const rib of RIBS) {
-    const len = PITCH * (1 - rib.gap);
-    const height = TREAD_DEPTH * 0.98;
-    for (let i = 0; i < perRib; i++) {
-      const along = (i + rib.shift) * PITCH + len * 0.5;
-      const phi = along / RADIUS;
-      const sy = Math.sin(phi);
-      const cy = Math.cos(phi);
-      radial.set(0, sy, cy);
-      circum.set(0, cy, -sy);
-      dummy.position.copy(radial).multiplyScalar(GROOVE_R + height * 0.46);
-      dummy.position.x = rib.x;
-      dummy.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(circum, radial, axial));
-      dummy.scale.set(len * 0.94, height, rib.w);
-      dummy.updateMatrix();
-      blocks.setMatrixAt(blockIndex, dummy.matrix);
-      const wear = 0.9 + ((i * 17 + rib.x * 40) % 7) * 0.018;
-      blocks.setColorAt(blockIndex, new THREE.Color(wear, wear, wear * 0.98));
-      blockIndex++;
-    }
-  }
-  blocks.instanceMatrix.needsUpdate = true;
-  if (blocks.instanceColor) blocks.instanceColor.needsUpdate = true;
-  spinner.add(blocks);
-
   const alloy = keepMat(
-    new THREE.MeshStandardMaterial({ color: 0xd5d8de, roughness: 0.28, metalness: 0.88 }),
+    new THREE.MeshStandardMaterial({
+      color: 0xc8ccd2,
+      roughness: 0.32,
+      metalness: 0.92,
+      envMapIntensity: 1.15,
+    }),
   );
   const alloyDark = keepMat(
-    new THREE.MeshStandardMaterial({ color: 0x2a2c30, roughness: 0.46, metalness: 0.62 }),
+    new THREE.MeshStandardMaterial({ color: 0x1c1e22, roughness: 0.55, metalness: 0.45 }),
   );
-  const ink = keepMat(new THREE.MeshStandardMaterial({ color: 0x1a1a1c, roughness: 0.55, metalness: 0.2 }));
+  const ink = keepMat(new THREE.MeshStandardMaterial({ color: 0x141416, roughness: 0.6, metalness: 0.15 }));
   const chrome = keepMat(
-    new THREE.MeshStandardMaterial({ color: 0xe6e8ec, roughness: 0.18, metalness: 0.94 }),
+    new THREE.MeshStandardMaterial({ color: 0xe7eaee, roughness: 0.16, metalness: 0.95, envMapIntensity: 1.2 }),
   );
 
-  const rimR = RADIUS * 0.7;
-  const lipGeo = keepGeo(new THREE.TorusGeometry(rimR, 0.016, 12, 72));
-  const spokeGeo = keepGeo(new THREE.CylinderGeometry(0.016, 0.034, rimR * 0.56, 8));
-  spokeGeo.translate(0, rimR * 0.3, 0.02);
-  const hubGeo = keepGeo(new THREE.CylinderGeometry(0.11, 0.13, 0.05, 24));
-  const capGeo = keepGeo(new THREE.CylinderGeometry(0.078, 0.078, 0.02, 24));
-  const lugGeo = keepGeo(new THREE.CylinderGeometry(0.022, 0.024, 0.02, 6));
-  const discGeo = keepGeo(new THREE.CylinderGeometry(RADIUS * 0.5, RADIUS * 0.5, 0.018, 40));
-  const barrelGeo = keepGeo(new THREE.CylinderGeometry(rimR * 0.94, rimR * 0.94, WIDTH * 0.58, 40, 1, true));
+  const rimR = RADIUS * 0.668;
+  const wheelGeo = keepGeo(buildWheel(rimR));
+  const lipGeo = keepGeo(new THREE.TorusGeometry(RADIUS * 0.708, 0.013, 10, 64));
+  const hubGeo = keepGeo(new THREE.CylinderGeometry(rimR * 0.22, rimR * 0.24, 0.028, 28));
+  const capGeo = keepGeo(new THREE.SphereGeometry(rimR * 0.16, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2));
+  const lugGeo = keepGeo(new THREE.CylinderGeometry(0.02, 0.022, 0.016, 6));
+  const discGeo = keepGeo(new THREE.CylinderGeometry(RADIUS * 0.46, RADIUS * 0.46, 0.016, 36));
+  const barrelGeo = keepGeo(new THREE.CylinderGeometry(rimR * 0.96, rimR * 0.96, WIDTH * 0.5, 40, 1, true));
   barrelGeo.rotateZ(Math.PI / 2);
-  const barrel = new THREE.Mesh(barrelGeo, alloyDark);
-  spinner.add(barrel);
+  spinner.add(new THREE.Mesh(barrelGeo, alloyDark));
 
+  const depth = 0.05;
   for (const faceSide of [-1, 1] as const) {
     const face = new THREE.Group();
-    face.position.x = faceSide * (WIDTH / 2 - 0.01);
+    face.position.x = faceSide * (WIDTH / 2 - 0.02 - depth);
     face.rotation.y = faceSide === 1 ? Math.PI / 2 : -Math.PI / 2;
     spinner.add(face);
 
     const disc = new THREE.Mesh(discGeo, alloyDark);
     disc.rotation.x = Math.PI / 2;
-    disc.position.z = -0.04;
+    disc.position.z = 0.01;
     face.add(disc);
 
+    const wheel = new THREE.Mesh(wheelGeo, alloy);
+    wheel.castShadow = true;
+    face.add(wheel);
+
     const lip = new THREE.Mesh(lipGeo, alloy);
+    lip.position.z = depth * 0.72;
     lip.castShadow = true;
     face.add(lip);
 
-    for (let i = 0; i < 5; i++) {
-      const base = (i / 5) * Math.PI * 2 + 0.15;
-      for (const twist of [-0.18, 0.18]) {
-        const spoke = new THREE.Mesh(spokeGeo, alloy);
-        spoke.rotation.z = base + twist;
-        spoke.castShadow = true;
-        face.add(spoke);
-      }
-    }
-
     const hub = new THREE.Mesh(hubGeo, ink);
     hub.rotation.x = Math.PI / 2;
-    hub.position.z = 0.01;
+    hub.position.z = depth + 0.004;
     face.add(hub);
+
     const cap = new THREE.Mesh(capGeo, chrome);
-    cap.rotation.x = Math.PI / 2;
-    cap.position.z = 0.038;
+    cap.rotation.x = -Math.PI / 2;
+    cap.position.z = depth + 0.01;
     face.add(cap);
+
     for (let i = 0; i < 5; i++) {
       const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
       const lug = new THREE.Mesh(lugGeo, chrome);
       lug.rotation.x = Math.PI / 2;
-      lug.position.set(Math.cos(a) * 0.072, Math.sin(a) * 0.072, 0.046);
+      lug.position.set(Math.cos(a) * rimR * 0.34, Math.sin(a) * rimR * 0.34, depth + 0.02);
       face.add(lug);
     }
   }
 
-  const valveGeo = keepGeo(new THREE.CylinderGeometry(0.011, 0.013, 0.05, 8));
+  const valveGeo = keepGeo(new THREE.CylinderGeometry(0.01, 0.012, 0.046, 8));
   valveGeo.rotateZ(Math.PI / 2);
   const valve = new THREE.Mesh(valveGeo, ink);
-  valve.position.set(WIDTH / 2 - 0.02, RADIUS * 0.78, 0.12);
+  valve.position.set(WIDTH / 2 - 0.012, RADIUS * 0.74, 0.16);
   spinner.add(valve);
-  const capStem = keepGeo(new THREE.CylinderGeometry(0.014, 0.014, 0.016, 8));
+  const capStem = keepGeo(new THREE.CylinderGeometry(0.013, 0.013, 0.014, 8));
   capStem.rotateZ(Math.PI / 2);
   const valveCap = new THREE.Mesh(capStem, chrome);
-  valveCap.position.set(WIDTH / 2 + 0.012, RADIUS * 0.78, 0.12);
+  valveCap.position.set(WIDTH / 2 + 0.016, RADIUS * 0.74, 0.16);
   spinner.add(valveCap);
 
   const shadowTex = keepTex(new THREE.CanvasTexture(paintBlob()));
@@ -686,32 +638,174 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
   };
 }
 
-function tireLathe() {
+function carcassRadius(ax: number) {
+  const a = Math.abs(ax);
   const rim = RADIUS * 0.7;
-  const steps = 56;
-  const pts: THREE.Vector2[] = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const y = (t - 0.5) * WIDTH;
-    const ax = Math.abs(y);
-    let r: number;
-    if (ax < 0.3) {
-      r = GROOVE_R + 0.003 * (1 - (ax / 0.3) ** 2);
-    } else if (ax < 0.355) {
-      const k = (ax - 0.3) / 0.055;
-      const s = k * k * (3 - 2 * k);
-      r = GROOVE_R + (RADIUS - 0.008 - GROOVE_R) * s;
-    } else {
-      const span = WIDTH / 2 - 0.355;
-      const k = Math.min((ax - 0.355) / span, 1);
-      const s = k * k * (3 - 2 * k);
-      const shoulder = RADIUS - 0.008;
-      const bulge = Math.sin(k * Math.PI) * 0.01;
-      r = shoulder * (1 - s) + rim * s + bulge * (1 - s);
-    }
-    pts.push(new THREE.Vector2(r, y));
+  const groove = RADIUS - TREAD_DEPTH;
+  if (a <= 0.3) return groove - a * a * 0.012;
+  if (a <= 0.355) {
+    const k = (a - 0.3) / 0.055;
+    const s = k * k * (3 - 2 * k);
+    return groove + (RADIUS - 0.008 - groove) * s;
   }
-  return new THREE.LatheGeometry(pts, 96);
+  const span = WIDTH / 2 - 0.355;
+  const k = Math.min((a - 0.355) / span, 1);
+  const s = k * k * (3 - 2 * k);
+  const shoulder = RADIUS - 0.008;
+  const bulge = Math.sin(Math.min(k, 1) * Math.PI) * 0.015;
+  let r = shoulder * (1 - s) + rim * s + bulge * (1 - k);
+  const ribAt = Math.abs(a - 0.383);
+  if (ribAt < 0.005) r += 0.0045 * (1 - ribAt / 0.005);
+  return r;
+}
+
+function treadLift(ax: number, ang: number) {
+  const arc = ang * RADIUS;
+  for (const rib of RIBS) {
+    if (ax < rib.x0 || ax > rib.x1) continue;
+    let phase = (arc / PITCH + rib.shift) % 1;
+    if (phase < 0) phase += 1;
+    if (phase < rib.gap) return 0;
+    const into = (phase - rib.gap) * PITCH;
+    const blockLen = (1 - rib.gap) * PITCH;
+    const edge = Math.min(into, blockLen - into);
+    const chamfer = Math.min(1, edge / 0.012);
+    const span = rib.x1 - rib.x0;
+    const axEdge = Math.min(ax - rib.x0, rib.x1 - ax);
+    const axc = Math.min(1, axEdge / Math.max(0.012, span * 0.16));
+    let cut = 1;
+    for (let s = 1; s <= rib.sipes; s++) {
+      const at = (blockLen * s) / (rib.sipes + 1);
+      if (Math.abs(into - at) < 0.016) cut = 0.32;
+    }
+    const a = Math.abs(ax);
+    let shoulder = 1;
+    if (a > 0.3) {
+      const k = Math.min(1, (a - 0.3) / 0.042);
+      const sm = k * k * (3 - 2 * k);
+      shoulder = 1 - sm;
+    }
+    return TREAD_DEPTH * chamfer * axc * cut * shoulder;
+  }
+  return 0;
+}
+
+function radiusAt(ax: number, ang: number) {
+  return carcassRadius(ax) + treadLift(ax, ang);
+}
+
+function profileV(ax: number) {
+  const half = WIDTH / 2;
+  const tread = 0.34;
+  if (ax < -tread) return ((ax + half) / (half - tread)) * 0.36;
+  if (ax > tread) return 0.64 + ((ax - tread) / (half - tread)) * 0.36;
+  return 0.36 + ((ax + tread) / (2 * tread)) * 0.28;
+}
+
+function axialStations() {
+  const half = WIDTH / 2;
+  const raw: number[] = [];
+  for (let i = 0; i <= 20; i++) raw.push(-half + ((half - 0.36) * i) / 20);
+  for (let i = 1; i <= 6; i++) raw.push(-0.36 + (0.06 * i) / 6);
+  for (const rib of RIBS) {
+    raw.push(rib.x0 - 0.003, rib.x0, rib.x0 + 0.003);
+    raw.push(rib.x1 - 0.003, rib.x1, rib.x1 + 0.003);
+    for (let i = 1; i <= 3; i++) raw.push(rib.x0 + ((rib.x1 - rib.x0) * i) / 4);
+  }
+  for (const v of [...raw]) if (v < -0.001) raw.push(-v);
+  raw.push(0);
+  raw.sort((a, b) => a - b);
+  const out: number[] = [];
+  for (const v of raw) {
+    const c = Math.max(-half, Math.min(half, v));
+    if (!out.length || c - out[out.length - 1]! > 0.0015) out.push(c);
+  }
+  return out;
+}
+
+function buildTireGeometry() {
+  const around = 560;
+  const axes = axialStations();
+  const across = axes.length;
+  const cols = around + 1;
+  const positions = new Float32Array(cols * across * 3);
+  const uvs = new Float32Array(cols * across * 2);
+  for (let i = 0; i <= around; i++) {
+    const ang = (i / around) * Math.PI * 2;
+    for (let j = 0; j < across; j++) {
+      const ax = axes[j]!;
+      const r = radiusAt(ax, ang);
+      const o = (i * across + j) * 3;
+      positions[o] = ax;
+      positions[o + 1] = Math.sin(ang) * r;
+      positions[o + 2] = Math.cos(ang) * r;
+      uvs[(i * across + j) * 2] = i / around;
+      uvs[(i * across + j) * 2 + 1] = profileV(ax);
+    }
+  }
+  const indices = new Uint32Array(around * (across - 1) * 6);
+  let n = 0;
+  for (let i = 0; i < around; i++) {
+    for (let j = 0; j < across - 1; j++) {
+      const a = i * across + j;
+      const b = (i + 1) * across + j;
+      const c = (i + 1) * across + j + 1;
+      const d = i * across + j + 1;
+      indices[n++] = a;
+      indices[n++] = d;
+      indices[n++] = c;
+      indices[n++] = a;
+      indices[n++] = c;
+      indices[n++] = b;
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+  geo.setIndex(new THREE.BufferAttribute(indices, 1));
+  geo.computeVertexNormals();
+  const normals = geo.getAttribute("normal");
+  for (let i = 0; i <= around; i++) {
+    const ang = (i / around) * Math.PI * 2;
+    const ry = Math.sin(ang);
+    const rz = Math.cos(ang);
+    for (let j = 0; j < across; j++) {
+      const ny = normals.getY(i * across + j);
+      const nz = normals.getZ(i * across + j);
+      if (ny * ry + nz * rz < 0) {
+        normals.setXYZ(i * across + j, -normals.getX(i * across + j), -ny, -nz);
+      }
+    }
+  }
+  normals.needsUpdate = true;
+  return geo;
+}
+
+function buildWheel(outer: number) {
+  const shape = new THREE.Shape();
+  shape.absarc(0, 0, outer, 0, Math.PI * 2, false);
+  const inner = outer * 0.3;
+  const win = outer * 0.84;
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + Math.PI / 5;
+    const hole = new THREE.Path();
+    const p = (r: number, da: number) => [Math.cos(a + da) * r, Math.sin(a + da) * r] as const;
+    const pts = [p(inner, 0.28), p(win, 0.4), p(win, -0.4), p(inner, -0.28)];
+    hole.moveTo(pts[0][0], pts[0][1]);
+    for (let k = 1; k < pts.length; k++) hole.lineTo(pts[k]![0], pts[k]![1]);
+    hole.closePath();
+    shape.holes.push(hole);
+  }
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.05,
+    bevelEnabled: true,
+    bevelThickness: 0.006,
+    bevelSize: 0.007,
+    bevelSegments: 1,
+    curveSegments: 20,
+  });
+  geo.computeVertexNormals();
+  return geo;
 }
 
 function paintAsphalt() {
@@ -870,83 +964,64 @@ function heightToNormal(src: HTMLCanvasElement) {
   return out;
 }
 
-function paintSidewall(bumpOnly: boolean) {
+function paintSidewall() {
   const w = 2048;
-  const h = 512;
+  const h = 1024;
   const color = document.createElement("canvas");
   const bump = document.createElement("canvas");
-  color.width = bump.width = w;
-  color.height = bump.height = h;
+  const rough = document.createElement("canvas");
+  color.width = bump.width = rough.width = w;
+  color.height = bump.height = rough.height = h;
   const ctx = color.getContext("2d")!;
   const btx = bump.getContext("2d")!;
-  ctx.fillStyle = "#1c1c20";
+  const rtx = rough.getContext("2d")!;
+  ctx.fillStyle = "#1b1a18";
   ctx.fillRect(0, 0, w, h);
-  btx.fillStyle = "#808080";
+  btx.fillStyle = "#7a7a7a";
   btx.fillRect(0, 0, w, h);
-  for (let i = 0; i < 6000; i++) {
-    const n = 16 + Math.random() * 24;
-    ctx.fillStyle = `rgba(${n},${n},${n},${0.35})`;
+  rtx.fillStyle = "#ececec";
+  rtx.fillRect(0, 0, w, h);
+  for (let i = 0; i < 8000; i++) {
+    const n = 18 + Math.random() * 22;
+    ctx.fillStyle = `rgba(${n},${n - 1},${n - 2},0.4)`;
     ctx.fillRect(Math.random() * w, Math.random() * h, 2, 1);
   }
-  ctx.fillStyle = "#121214";
-  ctx.fillRect(0, 0.34 * h, w, 0.32 * h);
+  ctx.fillStyle = "#141416";
+  ctx.fillRect(0, 0.36 * h, w, 0.28 * h);
+  rtx.fillStyle = "#8e8e8e";
+  rtx.fillRect(0, 0.36 * h, w, 0.28 * h);
 
-  const ring = (y: number, shade: string, lift: string) => {
-    ctx.fillStyle = shade;
-    ctx.fillRect(0, y, w, 3);
-    btx.fillStyle = lift;
-    btx.fillRect(0, y, w, 3);
+  const ridge = (y: number) => {
+    ctx.fillStyle = "#2a2926";
+    ctx.fillRect(0, y, w, 4);
+    btx.fillStyle = "#b4b4b4";
+    btx.fillRect(0, y, w, 5);
   };
-  ring(0.1 * h, "#2a2a2e", "#9a9a9a");
-  ring(0.22 * h, "#141416", "#6a6a6a");
-  ring(0.78 * h, "#141416", "#6a6a6a");
-  ring(0.9 * h, "#2a2a2e", "#9a9a9a");
+  ridge(0.06 * h);
+  ridge(0.3 * h);
+  ridge(0.7 * h);
+  ridge(0.94 * h);
 
-  if (!bumpOnly) {
-    ctx.fillStyle = "#3e3e44";
-    ctx.textBaseline = "middle";
-    const marks: Array<[string, number, number, string]> = [
-      ["TREAD", 0.08, 0.155, "700 54px 'Instrument Sans', sans-serif"],
-      ["245/40ZR18  97Y", 0.3, 0.155, "600 36px 'Instrument Sans', sans-serif"],
-      ["RADIAL  ·  TUBELESS", 0.52, 0.155, "600 32px 'Instrument Sans', sans-serif"],
-      ["M+S    MAX LOAD 730KG", 0.74, 0.155, "600 28px 'Instrument Sans', sans-serif"],
-      ["TREAD", 0.12, 0.845, "700 54px 'Instrument Sans', sans-serif"],
-      ["245/40ZR18  97Y", 0.4, 0.845, "600 36px 'Instrument Sans', sans-serif"],
-      ["OUTSIDE", 0.68, 0.845, "600 30px 'Instrument Sans', sans-serif"],
-    ];
-    for (const [text, u, v, font] of marks) {
-      ctx.font = font;
-      btx.font = font;
-      btx.fillStyle = "#c8c8c8";
-      btx.textBaseline = "middle";
-      const x = u * w;
-      const y = v * h;
-      ctx.fillText(text, x, y);
-      btx.fillText(text, x, y);
-    }
+  ctx.fillStyle = "#3a3936";
+  ctx.textBaseline = "middle";
+  btx.fillStyle = "#d0d0d0";
+  btx.textBaseline = "middle";
+  const marks: Array<[string, number, number, string]> = [
+    ["TREAD", 0.06, 0.16, "700 64px 'Instrument Sans', sans-serif"],
+    ["245/40ZR18  97Y", 0.28, 0.17, "600 36px 'Instrument Sans', sans-serif"],
+    ["RADIAL   TUBELESS", 0.5, 0.16, "600 30px 'Instrument Sans', sans-serif"],
+    ["M+S    MAX LOAD 730KG", 0.72, 0.17, "600 26px 'Instrument Sans', sans-serif"],
+    ["TREAD", 0.1, 0.84, "700 64px 'Instrument Sans', sans-serif"],
+    ["245/40ZR18  97Y", 0.36, 0.83, "600 36px 'Instrument Sans', sans-serif"],
+    ["OUTSIDE", 0.64, 0.84, "600 28px 'Instrument Sans', sans-serif"],
+  ];
+  for (const [text, u, v, font] of marks) {
+    ctx.font = font;
+    btx.font = font;
+    ctx.fillText(text, u * w, v * h);
+    btx.fillText(text, u * w, v * h);
   }
-  return { color, bump };
-}
-
-function paintBlockFace() {
-  const w = 128;
-  const h = 64;
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#2c2c30";
-  ctx.fillRect(0, 0, w, h);
-  for (let i = 0; i < 500; i++) {
-    const n = 18 + Math.random() * 30;
-    ctx.fillStyle = `rgba(${n},${n},${n},0.45)`;
-    ctx.fillRect(Math.random() * w, Math.random() * h, 1, 1);
-  }
-  ctx.fillStyle = "#0c0c0e";
-  ctx.fillRect(0, 16, w, 2);
-  ctx.fillRect(0, 33, w, 1);
-  ctx.fillRect(0, 48, w, 2);
-  return canvas;
+  return { color, bump, rough };
 }
 
 function paintTrack() {
@@ -960,18 +1035,21 @@ function paintTrack() {
   ctx.fillStyle = "#141210";
   for (const rib of RIBS) {
     const len = 1 - rib.gap;
-    const u0 = rib.shift % 1;
-    const v0 = (rib.x - rib.w / 2 + TREAD_HALF) / (TREAD_HALF * 2);
+    let u0 = (rib.gap - rib.shift) % 1;
+    if (u0 < 0) u0 += 1;
+    const v0 = (rib.x0 + TREAD_HALF) / (TREAD_HALF * 2);
     const bw = len * w;
-    const bh = (rib.w / (TREAD_HALF * 2)) * h;
+    const bh = ((rib.x1 - rib.x0) / (TREAD_HALF * 2)) * h;
     const x = u0 * w;
     const y = v0 * h;
     const draw = (px: number) => {
-      roundRect(ctx, px, y + bh * 0.08, bw, bh * 0.84, 8);
+      roundRect(ctx, px, y + bh * 0.06, bw, bh * 0.88, 6);
       ctx.fill();
-      ctx.fillStyle = "rgba(8,8,8,0.55)";
-      ctx.fillRect(px + bw * 0.33, y + bh * 0.16, Math.max(2, bw * 0.035), bh * 0.68);
-      ctx.fillRect(px + bw * 0.66, y + bh * 0.16, Math.max(2, bw * 0.035), bh * 0.68);
+      ctx.fillStyle = "rgba(8,8,8,0.7)";
+      for (let s = 1; s <= rib.sipes; s++) {
+        const sx = px + bw * (s / (rib.sipes + 1));
+        ctx.fillRect(sx, y + bh * 0.14, Math.max(2, bw * 0.045), bh * 0.72);
+      }
       ctx.fillStyle = "#141210";
     };
     draw(x);
