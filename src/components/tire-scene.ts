@@ -10,20 +10,20 @@ export type TireStats = {
 const RADIUS = 1.06;
 const WIDTH = 0.8;
 const PITCH = 0.186;
-const TREAD_DEPTH = 0.036;
-const TREAD_HALF = 0.345;
-const ASPHALT = 0x3a3836;
+const TREAD_DEPTH = 0.026;
+const TREAD_HALF = 0.34;
+const STUDIO = 0xe6e4e0;
 const ROAD_REPEAT = 32;
 const PLANE = 400;
 const MAX_SAMPLES = 760;
 
 type Rib = { x0: number; x1: number; gap: number; shift: number; sipes: number };
 const RIBS: Rib[] = [
-  { x0: -0.342, x1: -0.252, gap: 0.1, shift: 0.04, sipes: 1 },
-  { x0: -0.214, x1: -0.08, gap: 0.27, shift: 0.46, sipes: 3 },
-  { x0: -0.05, x1: 0.05, gap: 0.23, shift: 0.14, sipes: 2 },
-  { x0: 0.08, x1: 0.214, gap: 0.29, shift: 0.62, sipes: 3 },
-  { x0: 0.252, x1: 0.342, gap: 0.09, shift: 0.3, sipes: 1 },
+  { x0: -0.332, x1: -0.246, gap: 0.045, shift: 0, sipes: 1 },
+  { x0: -0.208, x1: -0.072, gap: 0.05, shift: 0.5, sipes: 2 },
+  { x0: -0.038, x1: 0.038, gap: 0.04, shift: 0.18, sipes: 2 },
+  { x0: 0.072, x1: 0.208, gap: 0.05, shift: 0.68, sipes: 2 },
+  { x0: 0.246, x1: 0.332, gap: 0.04, shift: 0.28, sipes: 1 },
 ];
 
 type Sample = { x: number; z: number; s: number };
@@ -53,12 +53,12 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.02;
+  renderer.toneMappingExposure = 1.08;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(ASPHALT);
-  scene.fog = new THREE.Fog(ASPHALT, 16, 42);
-  scene.environmentIntensity = 0.38;
+  scene.background = new THREE.Color(STUDIO);
+  scene.fog = new THREE.Fog(STUDIO, 20, 52);
+  scene.environmentIntensity = 0.72;
 
   const pmrem = new THREE.PMREMGenerator(renderer);
   const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -67,8 +67,8 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
 
   const camera = new THREE.PerspectiveCamera(34, width() / height(), 0.4, 200);
 
-  scene.add(new THREE.HemisphereLight(0xd7e0ea, 0x2e2c28, 0.62));
-  const sun = new THREE.DirectionalLight(0xfff4e6, 2.35);
+  scene.add(new THREE.HemisphereLight(0xf4f2ee, 0xd9d5ce, 0.95));
+  const sun = new THREE.DirectionalLight(0xfffaf6, 1.45);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.left = -8;
@@ -121,10 +121,10 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
         color: 0xffffff,
         map: floorTex,
         normalMap: floorNormal,
-        normalScale: new THREE.Vector2(1.35, 1.35),
+        normalScale: new THREE.Vector2(0.18, 0.18),
         roughnessMap: floorRough,
-        roughness: 0.96,
-        metalness: 0.03,
+        roughness: 0.88,
+        metalness: 0.02,
       }),
     ),
   );
@@ -170,12 +170,23 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
   carcass.receiveShadow = true;
   spinner.add(carcass);
 
+  const stripeMat = keepMat(
+    new THREE.MeshStandardMaterial({ color: 0x6e3028, roughness: 0.48, metalness: 0.04 }),
+  );
+  const stripeGeo = keepGeo(new THREE.TorusGeometry(0.8, 0.0065, 8, 80));
+  for (const stripeSide of [-1, 1] as const) {
+    const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+    stripe.rotation.y = Math.PI / 2;
+    stripe.position.x = stripeSide * 0.362;
+    spinner.add(stripe);
+  }
+
   const alloy = keepMat(
     new THREE.MeshStandardMaterial({
-      color: 0xc8ccd2,
-      roughness: 0.32,
-      metalness: 0.92,
-      envMapIntensity: 1.15,
+      color: 0xe4e7eb,
+      roughness: 0.22,
+      metalness: 0.94,
+      envMapIntensity: 1.25,
     }),
   );
   const alloyDark = keepMat(
@@ -482,7 +493,7 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
     trackGeo.computeBoundingSphere();
   }
 
-  const camOffset = new THREE.Vector3(4.6, 3.55, 6.7);
+  const camOffset = new THREE.Vector3(6.6, 1.7, 4.4);
   const camPos = new THREE.Vector3();
   const look = new THREE.Vector3();
   const lookTarget = new THREE.Vector3();
@@ -499,7 +510,7 @@ function startTire(host: HTMLElement, onStats: (stats: TireStats) => void): () =
   function frameCamera(dt: number, snap: boolean) {
     fit += (aspectFit() - fit) * (snap ? 1 : 1 - Math.exp(-3 * dt));
     desired.set(pos.x, 0, pos.y).addScaledVector(camOffset, introScale() * fit);
-    lookTarget.set(pos.x, 0.62, pos.y);
+    lookTarget.set(pos.x, 0.48, pos.y);
     if (snap) {
       camPos.copy(desired);
       look.copy(lookTarget);
@@ -676,7 +687,7 @@ function treadLift(ax: number, ang: number) {
     let cut = 1;
     for (let s = 1; s <= rib.sipes; s++) {
       const at = (blockLen * s) / (rib.sipes + 1);
-      if (Math.abs(into - at) < 0.016) cut = 0.32;
+      if (Math.abs(into - at) < 0.008) cut = 0.62;
     }
     const a = Math.abs(ax);
     let shoulder = 1;
@@ -786,11 +797,11 @@ function buildWheel(outer: number) {
   shape.absarc(0, 0, outer, 0, Math.PI * 2, false);
   const inner = outer * 0.3;
   const win = outer * 0.84;
-  for (let i = 0; i < 5; i++) {
-    const a = (i / 5) * Math.PI * 2 + Math.PI / 5;
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 + 0.04;
     const hole = new THREE.Path();
     const p = (r: number, da: number) => [Math.cos(a + da) * r, Math.sin(a + da) * r] as const;
-    const pts = [p(inner, 0.28), p(win, 0.4), p(win, -0.4), p(inner, -0.28)];
+    const pts = [p(inner, 0.12), p(win, 0.18), p(win, -0.18), p(inner, -0.12)];
     hole.moveTo(pts[0][0], pts[0][1]);
     for (let k = 1; k < pts.length; k++) hole.lineTo(pts[k]![0], pts[k]![1]);
     hole.closePath();
@@ -809,7 +820,7 @@ function buildWheel(outer: number) {
 }
 
 function paintAsphalt() {
-  const size = 1024;
+  const size = 512;
   const color = document.createElement("canvas");
   const height = document.createElement("canvas");
   const rough = document.createElement("canvas");
@@ -818,113 +829,32 @@ function paintAsphalt() {
   const ctx = color.getContext("2d")!;
   const htx = height.getContext("2d")!;
   const rtx = rough.getContext("2d")!;
-  ctx.fillStyle = "#3c3a36";
+  ctx.fillStyle = "#e4e2de";
   ctx.fillRect(0, 0, size, size);
   htx.fillStyle = "#808080";
   htx.fillRect(0, 0, size, size);
-  rtx.fillStyle = "#d0d0d0";
+  rtx.fillStyle = "#d8d8d8";
   rtx.fillRect(0, 0, size, size);
-
-  for (let i = 0; i < 36; i++) {
-    const tone = 58 + Math.random() * 36;
-    ctx.fillStyle = `rgba(${tone},${tone - 2},${tone - 6},${0.18 + Math.random() * 0.2})`;
+  for (let i = 0; i < 18; i++) {
+    const tone = 210 + Math.random() * 28;
+    ctx.fillStyle = `rgba(${tone},${tone - 1},${tone - 4},${0.08 + Math.random() * 0.08})`;
     ctx.beginPath();
     ctx.ellipse(
       Math.random() * size,
       Math.random() * size,
-      70 + Math.random() * 220,
-      28 + Math.random() * 90,
+      40 + Math.random() * 120,
+      20 + Math.random() * 50,
       Math.random() * Math.PI,
       0,
       Math.PI * 2,
     );
     ctx.fill();
   }
-
-  const stones: Array<[number, number, number]> = [
-    [42, 40, 38],
-    [78, 74, 68],
-    [168, 160, 148],
-    [112, 86, 68],
-    [92, 90, 86],
-    [196, 190, 182],
-    [54, 52, 48],
-  ];
-  for (let i = 0; i < 7000; i++) {
-    const tone = stones[i % stones.length]!;
-    const roll = Math.random();
-    const s = roll < 0.12 ? 5 + Math.random() * 7 : roll < 0.4 ? 2.5 + Math.random() * 3 : 1.2;
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    const j = (Math.random() - 0.5) * 22;
-    ctx.fillStyle = `rgb(${Math.max(0, tone[0] + j)},${Math.max(0, tone[1] + j)},${Math.max(0, tone[2] + j)})`;
-    ctx.fillRect(x, y, s, s * (0.55 + Math.random() * 0.8));
-    if (s > 4) {
-      ctx.fillStyle = "rgba(255,255,255,0.18)";
-      ctx.fillRect(x, y, Math.max(1, s * 0.35), 1);
-    }
-    const bump = s > 4 ? 210 : tone[0] > 140 ? 170 : 78;
-    htx.fillStyle = `rgb(${bump},${bump},${bump})`;
-    htx.fillRect(x, y, s, s);
-    const shine = tone[0] > 150 ? 120 : 210;
-    rtx.fillStyle = `rgb(${shine},${shine},${shine})`;
-    rtx.fillRect(x, y, s, s);
-  }
-  for (let i = 0; i < 14000; i++) {
-    const n = 30 + Math.random() * 50;
-    ctx.fillStyle = `rgba(${n},${n},${n - 2},${0.25 + Math.random() * 0.35})`;
+  for (let i = 0; i < 2500; i++) {
+    const n = 150 + Math.random() * 70;
+    ctx.fillStyle = `rgba(${n},${n},${n - 2},${0.04 + Math.random() * 0.06})`;
     ctx.fillRect(Math.random() * size, Math.random() * size, 1, 1);
   }
-
-  ctx.strokeStyle = "rgba(22,20,18,0.55)";
-  ctx.lineWidth = 1.4;
-  htx.strokeStyle = "#3a3a3a";
-  htx.lineWidth = 2;
-  for (let i = 0; i < 5; i++) {
-    let x = Math.random() * size;
-    let y = Math.random() * size;
-    ctx.beginPath();
-    htx.beginPath();
-    ctx.moveTo(x, y);
-    htx.moveTo(x, y);
-    const steps = 5 + Math.floor(Math.random() * 4);
-    for (let k = 0; k < steps; k++) {
-      x += (Math.random() - 0.5) * 160;
-      y += (Math.random() - 0.35) * 70;
-      ctx.lineTo(x, y);
-      htx.lineTo(x, y);
-    }
-    ctx.stroke();
-    htx.stroke();
-  }
-
-  const seam = size * 0.63;
-  ctx.fillStyle = "rgba(18,16,14,0.62)";
-  ctx.fillRect(0, seam, size, 5);
-  htx.fillStyle = "#2e2e2e";
-  htx.fillRect(0, seam, size, 6);
-  rtx.fillStyle = "#8a8a8a";
-  rtx.fillRect(0, seam, size, 7);
-
-  for (let i = 0; i < 3; i++) {
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    const stain = ctx.createRadialGradient(x, y, 4, x, y, 40 + Math.random() * 50);
-    stain.addColorStop(0, "rgba(20,18,16,0.45)");
-    stain.addColorStop(1, "rgba(20,18,16,0)");
-    ctx.fillStyle = stain;
-    ctx.beginPath();
-    ctx.arc(x, y, 90, 0, Math.PI * 2);
-    ctx.fill();
-    const wet = rtx.createRadialGradient(x, y, 4, x, y, 70);
-    wet.addColorStop(0, "rgba(40,40,40,0.85)");
-    wet.addColorStop(1, "rgba(40,40,40,0)");
-    rtx.fillStyle = wet;
-    rtx.beginPath();
-    rtx.arc(x, y, 70, 0, Math.PI * 2);
-    rtx.fill();
-  }
-
   return { color, normal: heightToNormal(height), rough };
 }
 
@@ -1058,17 +988,17 @@ function paintTrack() {
   const img = ctx.getImageData(0, 0, w, h);
   for (let y = 0; y < h; y++) {
     const v = y / (h - 1);
-    const edge = Math.min(1, v / 0.06, (1 - v) / 0.06);
+    const edge = Math.min(1, v / 0.035, (1 - v) / 0.035);
     const feather = edge * edge * (3 - 2 * edge);
     for (let x = 0; x < w; x++) {
       const i = (y * w + x) * 4;
       const ink = img.data[i + 3]!;
       const dark = img.data[i]!;
       const sipe = ink > 8 && dark < 16;
-      img.data[i] = 24;
-      img.data[i + 1] = 20;
-      img.data[i + 2] = 16;
-      img.data[i + 3] = ink > 8 ? Math.round((sipe ? 64 : 196) * feather) : Math.round(14 * feather);
+      img.data[i] = 18;
+      img.data[i + 1] = 18;
+      img.data[i + 2] = 18;
+      img.data[i + 3] = ink > 8 ? Math.round((sipe ? 80 : 235) * feather) : 0;
     }
   }
   ctx.putImageData(img, 0, 0);

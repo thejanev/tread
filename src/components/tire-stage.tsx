@@ -39,7 +39,7 @@ export function TireStage() {
               Tread
             </p>
             <p className="mt-2 max-w-xs text-sm text-pretty text-muted">
-              A real tire on asphalt. The tread stays where it rolled.
+              A studio tire. The tread stays where it rolled.
             </p>
           </div>
           <p className="pt-1 text-right font-sans text-sm tabular-nums tracking-wide text-ink">

@@ -13,9 +13,9 @@ export const Route = createRootRoute({
       { title: APP_NAME },
       {
         name: "description",
-        content: "A car tire that rolls across asphalt and leaves its tracks. Drag to steer.",
+        content: "A car tire that rolls across a studio floor and leaves its tracks. Drag to steer.",
       },
-      { name: "theme-color", content: "#2c2e32" },
+      { name: "theme-color", content: "#e6e4e0" },
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
